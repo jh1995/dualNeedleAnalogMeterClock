@@ -188,7 +188,7 @@ void setup(void) {
   // send to full-scale, with a little bit of headroom
   analogWrite (HOURSPIN, 240);
   analogWrite (MINUTESPIN, 240);
-  delay(10000); // wait 10 seconds for calibration
+  delay(1000); // wait 10 seconds for calibration
   // null out
   analogWrite (HOURSPIN, 0);
   analogWrite (MINUTESPIN, 0);
@@ -346,7 +346,7 @@ void oneSecondISR() {
 
 void loop(void) {
     //static float voltage;
-    static boolean inSetMode = 0; // 0 = normal operation, 1 = setting hours, 2 = setting minutes
+    static int inSetMode = 0; // 0 = normal operation, 1 = setting hours, 2 = setting minutes
     static int hours12;
     static int newHour;
     static int newMinute;
@@ -357,19 +357,20 @@ void loop(void) {
   
       readRTC();
       
-    Serial.print(month_day, HEX);
-    Serial.print("/");
-    Serial.print(month_nr, HEX);
-    Serial.print("/");
-    Serial.print(year_nr, HEX);
-    Serial.print(" ");
-    Serial.print(hours, HEX);
-    Serial.print(":");
-    Serial.print(minutes, HEX);
-    Serial.print(":");
-    Serial.println(seconds, HEX);
+      Serial.print(month_day, HEX);
+      Serial.print("/");
+      Serial.print(month_nr, HEX);
+      Serial.print("/");
+      Serial.print(year_nr, HEX);
+      Serial.print(" ");
+      Serial.print(hours, HEX);
+      Serial.print(":");
+      Serial.print(minutes, HEX);
+      Serial.print(":");
+      Serial.println(seconds, HEX);
       
       if (digitalRead(BUTTON1) == 0) { // set hours
+        delay(100);
         if (inSetMode == 0) { // if we were not in set mode
           Serial.println("Button1 set. Entering HOURS SET mode.");
           inSetMode = 1;
@@ -384,12 +385,15 @@ void loop(void) {
         }        else {
           analogWrite (MINUTESPIN, 0); 
         }
+        Serial.print("newHour: ");
+        Serial.println(newHour, DEC);
         
         analogWrite (HOURSPIN, (hours12 * 20));
 
       } // END IF BUTTON1
       
       if (digitalRead(BUTTON3) == 0) { // set minutes
+        delay(100);
         if (inSetMode == 0) {
           Serial.println("Button3 set. Entering MINUTES SET mode.");
           inSetMode = 2;
@@ -400,21 +404,44 @@ void loop(void) {
         newMinute = newMinute % 60;
         analogWrite (MINUTESPIN, newMinute * 4);
 
+        Serial.print("newMinute: ");
+        Serial.println(newMinute, DEC);
+
       } // END IF BUTTON3
       
       if (digitalRead(BUTTON2) == 0) { // normal operation
         if (inSetMode > 0) { // if we were in set mode, write new value, but first re-read just in case the other variable has changed
+          delay(100);
           Serial.println("Button2 set. Leaving SET mode.");
           
           readRTC();
           
           if (inSetMode == 1) {
-            hours = newHour;
+            newHour = decToBcd(newHour);
+            newMinute = minutes;
+            Serial.print("Going to write hours: ");
+            Serial.println(newHour, HEX);            
           }
           if (inSetMode == 2) {
-            minutes = newMinute;
+            newMinute = decToBcd(newMinute);
+            newHour = hours;
+            Serial.print("Going to write minutes: ");
+            Serial.println(newMinute, HEX);
           }
           inSetMode = 0;
+
+          Serial.print("Writing to RTC: ");
+          Serial.print(month_day, HEX);
+          Serial.print("/");
+          Serial.print(month_nr, HEX);
+          Serial.print("/");
+          Serial.print(year_nr, HEX);
+          Serial.print(" ");
+          Serial.print(newHour, HEX);
+          Serial.print(":");
+          Serial.print(newMinute, HEX);
+          Serial.print(":");
+          Serial.println(seconds, HEX);
 
           // update time on RTC
                     Wire.beginTransmission(0x68);
@@ -423,8 +450,8 @@ void loop(void) {
           Wire.write((byte)0x00);
           //specifico il tempo e la data
           Wire.write(seconds); //1° byte SECONDI da 0x00 a 0x59 -- skipping ahead of two seconds
-          Wire.write(minutes); //2° byte MINUTI da 0x00 a 0x59
-          Wire.write((byte)0x80 | hours); //3° byte ORE da 0x00 a 0x24
+          Wire.write((byte)newMinute); //2° byte MINUTI da 0x00 a 0x59
+          Wire.write((byte)0x80 | newHour); //3° byte ORE da 0x00 a 0x24
           Wire.write((byte)0x02); //4° byte GIORNO della settimana da 0x01 a 0x07
           Wire.write(month_day); //5° byte GIORNO del mese da 0x00 a 0x31
           Wire.write(month_nr); //6° byte MESE da 0x00 a 0x12
@@ -449,8 +476,7 @@ void loop(void) {
       } // END IF BUTTON2
 
       if (inSetMode == 0) {
-        // **** TO BE REMOVED once BUTTONs are physically implemented ****
-        hours12 = bcdToDec(hours); // bring it to 0-12 range
+                hours12 = bcdToDec(hours); // bring it to 0-12 range
         if (hours12 > 12) {
           hours12 = hours12 % 12;
         }
